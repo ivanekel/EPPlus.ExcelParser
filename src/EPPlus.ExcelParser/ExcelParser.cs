@@ -18,13 +18,13 @@ namespace EPPlus.ExcelParser
         {
             var excelWorksheetDefinition = fileDefinition.ExcelWorksheetDefinition;
             var columns = excelWorksheetDefinition.Columns;
-            ValidateColumnPropertyNames(ref columns);
+            ValidateColumnPropertyNames(columns);
             var hasErrors = false;
             var rowStart = excelWorksheetDefinition.HasHeaders ? 2 : 1;
             var uniqueColumns = excelWorksheetDefinition.Columns.Where(o => o.IsUnique).Select(o => o.Column).ToList();
             var uniqueValues = new HashSet<(int column, string value)>();
             var validObjectList = new List<dynamic>();
-            
+
             using (var excelPackage = new ExcelPackage(fileDefinition.ExcelFileStream))
             {
                 var worksheet = excelPackage.Workbook.Worksheets[excelWorksheetDefinition.WorksheetIndex];
@@ -38,8 +38,8 @@ namespace EPPlus.ExcelParser
                         var columnValidator = columns[i];
                         var validators = columnValidator.Validators;
 
-                        if (ValidateExcelCell(row, columnValidator.Column, ref validators,
-                            columnValidator.IsUnique, columnValidator.UniqueFailColor, ref worksheet, ref uniqueValues))
+                        if (ValidateExcelCell(row, columnValidator.Column, validators,
+                            columnValidator.IsUnique, columnValidator.UniqueFailColor, worksheet, uniqueValues))
                         {
                             hasErrors = true;
                             excelRowValid = false;
@@ -54,7 +54,7 @@ namespace EPPlus.ExcelParser
                     // setup object
                     if (excelRowValid)
                     {
-                        validObjectList.Add(GetObjectInstance(row, ref worksheet, ref excelWorksheetDefinition));
+                        validObjectList.Add(GetObjectInstance(row, worksheet, excelWorksheetDefinition));
                     }
                 }
 
@@ -62,7 +62,7 @@ namespace EPPlus.ExcelParser
             }
         }
 
-        private static void ValidateColumnPropertyNames(ref List<IExcelColumnDefinition> columns)
+        private static void ValidateColumnPropertyNames(List<IExcelColumnDefinition> columns)
         {
             foreach (var validator in columns)
             {
@@ -75,9 +75,9 @@ namespace EPPlus.ExcelParser
             Convert.ChangeType(value, type);
 
         private static bool ValidateExcelCell(int row, int column,
-            ref List<(Func<string, bool> validationPredicate, Color failColor)> validationCases,
-            bool isUnique, Color uniqueFailColor, ref ExcelWorksheet worksheet,
-            ref HashSet<(int column, string value)> uniqueValues)
+            List<(Func<string, bool> validationPredicate, Color failColor)> validationCases,
+            bool isUnique, Color uniqueFailColor, ExcelWorksheet worksheet,
+            HashSet<(int column, string value)> uniqueValues)
         {
             try
             {
@@ -111,7 +111,7 @@ namespace EPPlus.ExcelParser
             return false;
         }
 
-        public static dynamic GetObjectInstance(int row, ref ExcelWorksheet worksheet, ref IExcelWorksheetDefinition excelWorksheetDefinition)
+        public static dynamic GetObjectInstance(int row, ExcelWorksheet worksheet, IExcelWorksheetDefinition excelWorksheetDefinition)
         {
             var instance = new ExpandoObject();
             var expandoDict = instance as IDictionary<string, object>;
