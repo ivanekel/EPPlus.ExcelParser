@@ -2,6 +2,8 @@
 Microsoft Visual Studio Solution File, Format Version 12.00
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "EPPlus.ExcelParser", "src\EPPlus.ExcelParser\EPPlus.ExcelParser.csproj", "{F9245AD6-A4C2-4B6E-8D60-0B60A7A5594F}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "TestApp", "TestApp\TestApp.csproj", "{47303A92-9C6B-4F18-80A0-2FFD3E75C33D}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -12,5 +14,9 @@ Global
 		{F9245AD6-A4C2-4B6E-8D60-0B60A7A5594F}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{F9245AD6-A4C2-4B6E-8D60-0B60A7A5594F}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{F9245AD6-A4C2-4B6E-8D60-0B60A7A5594F}.Release|Any CPU.Build.0 = Release|Any CPU
+		{47303A92-9C6B-4F18-80A0-2FFD3E75C33D}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{47303A92-9C6B-4F18-80A0-2FFD3E75C33D}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{47303A92-9C6B-4F18-80A0-2FFD3E75C33D}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{47303A92-9C6B-4F18-80A0-2FFD3E75C33D}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 EndGlobal
