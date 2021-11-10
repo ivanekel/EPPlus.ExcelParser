@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Drawing;
 using System.Linq;
 using System.Linq.Expressions;
+using System.Reflection;
 using FluentValidation;
 using FluentValidation.Validators;
 using OfficeOpenXml;
@@ -10,7 +11,7 @@ using OfficeOpenXml.FormulaParsing.Excel.Functions.Text;
 
 namespace EPPlus.ExcelParser
 {
-    public static class ExcelParserFactory
+    public static class ExcelParser
     {
         public static ExcelParser<T> CreateNew<T>(
             ExcelPackage excelFile,
@@ -26,8 +27,8 @@ namespace EPPlus.ExcelParser
         private readonly ExcelPackage _excelPackage;
         private readonly Func<ExcelRowMapper, T> _mapper;
         private readonly bool _hasHeaders;
-        private InlineValidator<T> _validation;
-
+        private ExcelInlineValidator<T> _validation;
+        
         internal ExcelParser(ExcelPackage excelFile, bool hasHeaders, Func<ExcelRowMapper, T> mapper)
         {
             _excelPackage = excelFile;
@@ -35,9 +36,9 @@ namespace EPPlus.ExcelParser
             _mapper = mapper;
         }
 
-        public ExcelParser<T> SetValidation(Action<InlineValidator<T>> validatorBuilder)
+        public ExcelParser<T> SetValidation(Action<ExcelInlineValidator<T>> validatorBuilder)
         {
-            _validation = new InlineValidator<T>();
+            _validation = new ExcelInlineValidator<T>();
             validatorBuilder(_validation);
             return this;
         }
@@ -46,21 +47,19 @@ namespace EPPlus.ExcelParser
         {
             var worksheet = _excelPackage.Workbook.Worksheets.First();
             var rowStart = _hasHeaders ? 2 : 1;
-            _validation.Select(o => o.PropertyName.EndsWith("_uniqueExcelColumn"));
+
             for (var row = rowStart; row <= worksheet.Dimension.Rows; row++)
             {
                 var excelRowMapper = new ExcelRowMapper(worksheet, row);
-
                 var mappedObject = _mapper(excelRowMapper);
+
 
                 var validationResult = _validation?.Validate(mappedObject);
 
 
                 if (validationResult.IsValid)
                 {
-                    // check whether must be unique and continue
-
-
+                    //check unique
                     continue;
                 }
 
@@ -78,16 +77,10 @@ namespace EPPlus.ExcelParser
         }
     }
 
-
     public class ExcelRowMapper
     {
         private readonly ExcelWorksheet _worksheet;
         private readonly int _row;
-
-        private readonly List<(int column, KnownColor uniqueValidationColor)> _uniqueColumns =
-            new List<(int column, KnownColor uniqueValidationColor)>();
-
-        public List<(int column, KnownColor uniqueValidationColor)> UniqueColumns => _uniqueColumns;
 
         public ExcelRowMapper(ExcelWorksheet worksheet, int row)
         {
@@ -95,30 +88,50 @@ namespace EPPlus.ExcelParser
             _row = row;
         }
 
-        public T GetValue<T>(int column, bool isUnique = false, KnownColor uniqueValidationColor = KnownColor.Yellow)
+        public T GetValue<T>(int column)
         {
-            if (isUnique)
-            {
-                _uniqueColumns.Add((column, uniqueValidationColor));
-            }
-
             return _worksheet.Cells[_row, column].GetValue<T>();
         }
     }
 
-    public static class TestClass
+    public static class ExcelValidatorOptions
     {
         public static IRuleBuilderOptions<T, TProperty> WithRowColor<T, TProperty>(
             this IRuleBuilderOptions<T, TProperty> rule, KnownColor invalidColor = KnownColor.Red)
         {
             return rule.WithMessage("InvalidColorDefined").WithErrorCode(invalidColor.ToString());
         }
+    }
 
-        public static IRuleBuilderOptions<T, TProperty> IsUnique<T, TProperty>(
-            this IRuleBuilderOptions<T, TProperty> rule, KnownColor invalidColor = KnownColor.Red)
+
+    public class ExcelInlineValidator<T> : InlineValidator<T>
+    {
+        private readonly Dictionary<string, KnownColor> _uniqueProperties;
+        public Dictionary<string, KnownColor> UniqueProperties => _uniqueProperties;
+
+        public ExcelInlineValidator()
         {
-            //get name of property 
-            return rule;
+            _uniqueProperties = new Dictionary<string, KnownColor>();
+        }
+
+        public IRuleBuilderInitial<T, TProperty> UniqueRuleFor<TProperty>(Expression<Func<T, TProperty>> expression,
+            KnownColor uniqueFailColor = KnownColor.Yellow)
+        {
+            var propertyInfo = (expression.Body as MemberExpression).Member as PropertyInfo;
+            if (propertyInfo == null)
+            {
+                throw new ArgumentException("Invalid property");
+            }
+
+            if (_uniqueProperties.ContainsKey(propertyInfo.Name))
+            {
+                throw new ArgumentException($"unique rule already set for property {propertyInfo.Name}");
+            }
+
+            _uniqueProperties.Add(propertyInfo.Name, uniqueFailColor);
+
+
+            return RuleFor(expression);
         }
     }
 
