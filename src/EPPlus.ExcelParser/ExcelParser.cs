@@ -1,11 +1,16 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Drawing;
+using System.Dynamic;
+using System.IO;
 using System.Linq;
 using System.Linq.Expressions;
 using System.Reflection;
+using EPPlus.ExcelParser.ExcelColumnDefinitionAggregate;
+using EPPlus.ExcelParser.ExcelDefinitionAggregate;
+using EPPlus.ExcelParser.ExcelFileAggregate;
+using EPPlus.ExcelParser.ExcelParserResultAggregate;
 using FluentValidation;
-using FluentValidation.Validators;
 using OfficeOpenXml;
 using OfficeOpenXml.FormulaParsing.Excel.Functions.Text;
 
@@ -13,32 +18,32 @@ namespace EPPlus.ExcelParser
 {
     public static class ExcelParser
     {
-        public static ExcelParser<T> CreateNew<T>(
+        public static ExcelParser<TObject> CreateNew<TObject>(
             ExcelPackage excelFile,
             bool hasHeaders,
-            Func<ExcelRowMapper, T> mapper)
+            Func<ExcelRowMapper, TObject> mapper)
         {
-            return new ExcelParser<T>(excelFile, hasHeaders, mapper);
+            return new ExcelParser<TObject>(excelFile, hasHeaders, mapper);
         }
     }
 
-    public class ExcelParser<T>
+    public class ExcelParser<TObject>
     {
         private readonly ExcelPackage _excelPackage;
-        private readonly Func<ExcelRowMapper, T> _mapper;
+        private readonly Func<ExcelRowMapper, TObject> _mapper;
         private readonly bool _hasHeaders;
-        private ExcelInlineValidator<T> _validation;
-        
-        internal ExcelParser(ExcelPackage excelFile, bool hasHeaders, Func<ExcelRowMapper, T> mapper)
+        private ExcelInlineValidator<TObject> _validation;
+
+        internal ExcelParser(ExcelPackage excelFile, bool hasHeaders, Func<ExcelRowMapper, TObject> mapper)
         {
             _excelPackage = excelFile;
             _hasHeaders = hasHeaders;
             _mapper = mapper;
         }
 
-        public ExcelParser<T> SetValidation(Action<ExcelInlineValidator<T>> validatorBuilder)
+        public ExcelParser<TObject> SetValidation(Action<ExcelInlineValidator<TObject>> validatorBuilder)
         {
-            _validation = new ExcelInlineValidator<T>();
+            _validation = new ExcelInlineValidator<TObject>();
             validatorBuilder(_validation);
             return this;
         }
@@ -47,33 +52,89 @@ namespace EPPlus.ExcelParser
         {
             var worksheet = _excelPackage.Workbook.Worksheets.First();
             var rowStart = _hasHeaders ? 2 : 1;
+            var uniqueValues = new HashSet<(string, string)>();
+            var mappedObjectList = new List<TObject>();
+            var containsErrors = false;
 
             for (var row = rowStart; row <= worksheet.Dimension.Rows; row++)
             {
                 var excelRowMapper = new ExcelRowMapper(worksheet, row);
                 var mappedObject = _mapper(excelRowMapper);
 
-
                 var validationResult = _validation?.Validate(mappedObject);
-
+                containsErrors = !validationResult.IsValid;
 
                 if (validationResult.IsValid)
                 {
-                    //check unique
+                    var rowValid = true;
+                    // unique properties exist
+                    if (_validation.UniqueProperties.Count != 0)
+                    {
+                        for (int i = 0; i < _validation.UniqueProperties.Count; i++)
+                        {
+                            var uniqueDefinition = _validation.UniqueProperties.ElementAt(i);
+                            var property = (uniqueDefinition.Key,
+                                typeof(T).GetProperty(uniqueDefinition.Key).GetValue(mappedObject).ToString());
+
+                            if (uniqueValues.Contains(property)) // value already exists mark as duplicate
+                            {
+                                worksheet.Row(row).Style.Fill.PatternType = OfficeOpenXml.Style.ExcelFillStyle.Solid;
+                                worksheet.Row(row).Style.Fill.BackgroundColor.SetColor(uniqueDefinition.Value);
+                                rowValid = false;
+                                containsErrors = true;
+                                break;
+                            }
+
+                            uniqueValues.Add(property);
+                        }
+                    }
+
+                    if (rowValid)
+                    {
+                        mappedObjectList.Add(mappedObject);
+                    }
+
                     continue;
                 }
 
-                var colorValidation = validationResult
-                    .Errors
-                    .FirstOrDefault(o => o.ErrorMessage == "InvalidColorDefined");
+                var colorValidation =
+                    validationResult.Errors.FirstOrDefault(o => o.ErrorMessage == "InvalidColorDefined");
 
                 if (colorValidation != null)
                 {
                     var invalidColor = Enum.Parse<KnownColor>(colorValidation.ErrorCode);
+                    worksheet.Row(row).Style.Fill.PatternType = OfficeOpenXml.Style.ExcelFillStyle.Solid;
+                    worksheet.Row(row).Style.Fill.BackgroundColor.SetColor(Color.FromKnownColor(invalidColor));
+                }
+                else
+                {
+                    worksheet.Row(row).Style.Fill.PatternType = OfficeOpenXml.Style.ExcelFillStyle.Solid;
+                    worksheet.Row(row).Style.Fill.BackgroundColor.SetColor(Color.Red);
                 }
             }
 
-            return null;
+            return ExcelParserResult<TObject>.CreateNew(mappedObjectList, _excelPackage.GetAsByteArray(),
+                !containsErrors);
+        }
+    }
+
+    public class ExcelParserResult<TObject>
+    {
+        public List<TObject> MappedObjects { get; private set; }
+        public byte[] ExcelResult { get; set; }
+        public bool IsValid { get; set; }
+
+        private ExcelParserResult(List<TObject> mappedObjects, byte[] excelFileByteResult, bool isValid)
+        {
+            MappedObjects = mappedObjects;
+            ExcelResult = excelFileByteResult;
+            IsValid = isValid;
+        }
+
+        public static ExcelParserResult<TObject> CreateNew(List<TObject> mappedObjects, byte[] excelFileByteResult,
+            bool isValid)
+        {
+            return new ExcelParserResult<TObject>(mappedObjects, excelFileByteResult, isValid);
         }
     }
 
@@ -82,15 +143,16 @@ namespace EPPlus.ExcelParser
         private readonly ExcelWorksheet _worksheet;
         private readonly int _row;
 
+
         public ExcelRowMapper(ExcelWorksheet worksheet, int row)
         {
             _worksheet = worksheet;
             _row = row;
         }
 
-        public T GetValue<T>(int column)
+        public TCustomProperty GetValue<TCustomProperty>(int column)
         {
-            return _worksheet.Cells[_row, column].GetValue<T>();
+            return _worksheet.Cells[_row, column].GetValue<TCustomProperty>();
         }
     }
 
@@ -104,17 +166,19 @@ namespace EPPlus.ExcelParser
     }
 
 
-    public class ExcelInlineValidator<T> : InlineValidator<T>
+    public class ExcelInlineValidator<TCustomObject> : InlineValidator<TCustomObject>
     {
-        private readonly Dictionary<string, KnownColor> _uniqueProperties;
-        public Dictionary<string, KnownColor> UniqueProperties => _uniqueProperties;
+        private readonly Dictionary<string, Color> _uniqueProperties;
+        public Dictionary<string, Color> UniqueProperties => _uniqueProperties;
 
         public ExcelInlineValidator()
         {
-            _uniqueProperties = new Dictionary<string, KnownColor>();
+            _uniqueProperties = new Dictionary<string, Color>();
         }
 
-        public IRuleBuilderInitial<T, TProperty> RuleFor<TProperty>(Expression<Func<T, TProperty>> expression, bool isUnique = false,
+        public IRuleBuilderInitial<TCustomObject, TProperty> RuleFor<TProperty>(
+            Expression<Func<TCustomObject, TProperty>> expression,
+            bool isUnique = false,
             KnownColor uniqueFailColor = KnownColor.Yellow)
         {
             var propertyInfo = (expression.Body as MemberExpression).Member as PropertyInfo;
@@ -128,148 +192,10 @@ namespace EPPlus.ExcelParser
                 throw new ArgumentException($"unique rule already set for property {propertyInfo.Name}");
             }
 
-            _uniqueProperties.Add(propertyInfo.Name, uniqueFailColor);
+            _uniqueProperties.Add(propertyInfo.Name, Color.FromKnownColor(uniqueFailColor));
 
 
             return RuleFor(expression);
         }
     }
-
-
-    // public static class ExcelParser
-    // {
-    //     private static IExcelParserResult<dynamic> ValidateAndConvertToDynamic(IExcelFileDefinition fileDefinition)
-    //     {
-    //         var excelWorksheetDefinition = fileDefinition.ExcelWorksheetDefinition;
-    //         var columns = excelWorksheetDefinition.Columns;
-    //         ValidateColumnPropertyNames(columns);
-    //         var hasErrors = false;
-    //         var rowStart = excelWorksheetDefinition.HasHeaders ? 2 : 1;
-    //         var uniqueColumns = excelWorksheetDefinition.Columns.Where(o => o.IsUnique).Select(o => o.Column).ToList();
-    //         var uniqueValues = new HashSet<(int column, string value)>();
-    //         var validObjectList = new List<dynamic>();
-    //
-    //         using (var excelPackage = new ExcelPackage(fileDefinition.ExcelFileStream))
-    //         {
-    //             var worksheet = excelPackage.Workbook.Worksheets[excelWorksheetDefinition.WorksheetIndex];
-    //
-    //             for (var row = rowStart; row <= worksheet.Dimension.Rows; row++)
-    //             {
-    //                 var excelRowValid = true;
-    //                 // iterate over columns
-    //                 for (int i = 0; i < columns.Count; i++)
-    //                 {
-    //                     var columnValidator = columns[i];
-    //                     var validators = columnValidator.Validators;
-    //
-    //                     if (ValidateExcelCell(row, columnValidator.Column, validators,
-    //                         columnValidator.IsUnique, columnValidator.UniqueFailColor, worksheet, uniqueValues))
-    //                     {
-    //                         hasErrors = true;
-    //                         excelRowValid = false;
-    //                         break;
-    //                     }
-    //
-    //                     if (uniqueColumns.IndexOf(columnValidator.Column) != -1)
-    //                     {
-    //                         uniqueValues.Add((columnValidator.Column,worksheet.Cells[row, columnValidator.Column].Value?.ToString()));
-    //                     }
-    //                 }
-    //                 // setup object
-    //                 if (excelRowValid)
-    //                 {
-    //                     validObjectList.Add(GetObjectInstance(row, worksheet, excelWorksheetDefinition));
-    //                 }
-    //             }
-    //
-    //             return ExcelParserResult<dynamic>.CreateInstance(validObjectList, hasErrors, excelPackage.GetAsByteArray());
-    //         }
-    //     }
-    //
-    //     private static void ValidateColumnPropertyNames(List<IExcelColumnDefinition> columns)
-    //     {
-    //         foreach (var validator in columns)
-    //         {
-    //             if (string.IsNullOrEmpty(validator.ColumnPropertyName))
-    //                 throw new ArgumentException($"Property name for column {validator.Column} not set");
-    //         }
-    //     }
-    //
-    //     private static object ConvertValue(string value, Type type) => string.IsNullOrEmpty(value) ? string.Empty :
-    //         Convert.ChangeType(value, type);
-    //
-    //     private static bool ValidateExcelCell(int row, int column,
-    //         List<(Func<string, bool> validationPredicate, Color failColor)> validationCases,
-    //         bool isUnique, Color uniqueFailColor, ExcelWorksheet worksheet,
-    //         HashSet<(int column, string value)> uniqueValues)
-    //     {
-    //         try
-    //         {
-    //             for (int j = 0; j < validationCases.Count; j++)
-    //             {
-    //                 var standardCheck = validationCases.ElementAt(j);
-    //                 if (!standardCheck.validationPredicate(worksheet.Cells[row, column].Value?.ToString()))
-    //                 {
-    //                     worksheet.Row(row).Style.Fill.PatternType = OfficeOpenXml.Style.ExcelFillStyle.Solid;
-    //                     worksheet.Row(row).Style.Fill.BackgroundColor.SetColor(standardCheck.failColor);
-    //                     return true;
-    //                 }
-    //             }
-    //
-    //             if (isUnique && uniqueValues.Contains((column, worksheet.Cells[row, column]?.Value?.ToString()))) //complexity O(1)
-    //             {
-    //                 worksheet.Row(row).Style.Fill.PatternType = OfficeOpenXml.Style.ExcelFillStyle.Solid;
-    //                 worksheet.Row(row).Style.Fill.BackgroundColor.SetColor(uniqueFailColor);
-    //                 return true;
-    //             }
-    //
-    //             worksheet.Row(row).Style.Fill.PatternType = OfficeOpenXml.Style.ExcelFillStyle.Solid;
-    //             worksheet.Row(row).Style.Fill.BackgroundColor.SetColor(Color.Green);
-    //         }
-    //         catch
-    //         {
-    //             worksheet.Row(row).Style.Fill.PatternType = OfficeOpenXml.Style.ExcelFillStyle.Solid;
-    //             worksheet.Row(row).Style.Fill.BackgroundColor.SetColor(Color.Red);
-    //             return true;
-    //         }
-    //         return false;
-    //     }
-    //
-    //     public static dynamic GetObjectInstance(int row, ExcelWorksheet worksheet, IExcelWorksheetDefinition excelWorksheetDefinition)
-    //     {
-    //         var instance = new ExpandoObject();
-    //         var expandoDict = instance as IDictionary<string, object>;
-    //
-    //         for (int i = 0; i < excelWorksheetDefinition.Columns.Count; i++) // iterate over columns and create object properties
-    //         {
-    //             var cellValue = worksheet.Cells[row, excelWorksheetDefinition.Columns[i].Column]?.Value?.ToString() ?? string.Empty;
-    //             var propertyName = excelWorksheetDefinition.Columns[i].ColumnPropertyName;
-    //             var columnType = excelWorksheetDefinition.Columns[i].TypeOfColumn;
-    //             if (expandoDict.ContainsKey(propertyName))
-    //             {
-    //                 expandoDict[propertyName] = ConvertValue(cellValue, columnType);
-    //             }
-    //             else
-    //             {
-    //                 expandoDict.Add(propertyName, ConvertValue(cellValue, columnType));
-    //             }
-    //         }
-    //         return expandoDict;
-    //     }
-    //
-    //     public static IExcelFile Load(Stream excelFileStream)
-    //     {
-    //         return new ExcelFile(excelFileStream);
-    //     }
-    //
-    //     public static IExcelFileDefinition Validate(this IExcelFile excelFile, IExcelWorksheetDefinition excelWorksheetDefinition)
-    //     {
-    //         return new ExcelFileDefinition(excelFile.ExcelFileStream, excelWorksheetDefinition);
-    //     }
-    //
-    //     public static IExcelParserResult<dynamic> ToDynamicResult(this IExcelFileDefinition fileDefinition)
-    //     {
-    //         return ValidateAndConvertToDynamic(fileDefinition);
-    //     }
-    // }
 }
