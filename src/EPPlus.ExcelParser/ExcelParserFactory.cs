@@ -2,9 +2,11 @@
 using System.Collections.Generic;
 using System.Drawing;
 using System.Linq;
+using System.Linq.Expressions;
 using FluentValidation;
 using FluentValidation.Validators;
 using OfficeOpenXml;
+using OfficeOpenXml.FormulaParsing.Excel.Functions.Text;
 
 namespace EPPlus.ExcelParser
 {
@@ -44,13 +46,12 @@ namespace EPPlus.ExcelParser
         {
             var worksheet = _excelPackage.Workbook.Worksheets.First();
             var rowStart = _hasHeaders ? 2 : 1;
-
+            _validation.Select(o => o.PropertyName.EndsWith("_uniqueExcelColumn"));
             for (var row = rowStart; row <= worksheet.Dimension.Rows; row++)
             {
                 var excelRowMapper = new ExcelRowMapper(worksheet, row);
 
                 var mappedObject = _mapper(excelRowMapper);
-
 
                 var validationResult = _validation?.Validate(mappedObject);
 
@@ -77,7 +78,6 @@ namespace EPPlus.ExcelParser
         }
     }
 
-   
 
     public class ExcelRowMapper
     {
@@ -112,6 +112,13 @@ namespace EPPlus.ExcelParser
             this IRuleBuilderOptions<T, TProperty> rule, KnownColor invalidColor = KnownColor.Red)
         {
             return rule.WithMessage("InvalidColorDefined").WithErrorCode(invalidColor.ToString());
+        }
+
+        public static IRuleBuilderOptions<T, TProperty> IsUnique<T, TProperty>(
+            this IRuleBuilderOptions<T, TProperty> rule, KnownColor invalidColor = KnownColor.Red)
+        {
+            //get name of property 
+            return rule;
         }
     }
 
