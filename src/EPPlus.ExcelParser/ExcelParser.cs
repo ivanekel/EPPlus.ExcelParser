@@ -114,7 +114,7 @@ namespace EPPlus.ExcelParser
             _uniqueProperties = new Dictionary<string, KnownColor>();
         }
 
-        public IRuleBuilderInitial<T, TProperty> UniqueRuleFor<TProperty>(Expression<Func<T, TProperty>> expression,
+        public IRuleBuilderInitial<T, TProperty> RuleFor<TProperty>(Expression<Func<T, TProperty>> expression, bool isUnique = false,
             KnownColor uniqueFailColor = KnownColor.Yellow)
         {
             var propertyInfo = (expression.Body as MemberExpression).Member as PropertyInfo;

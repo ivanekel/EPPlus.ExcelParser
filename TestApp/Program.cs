@@ -21,7 +21,7 @@ namespace TestApp
                     })
                 .SetValidation(rules =>
                 {
-                    rules.UniqueRuleFor(o => o.Name).NotEmpty();
+                    rules.RuleFor(o => o.Name).NotEmpty();
                     rules.RuleFor(o => o.Surname).NotEmpty();
                     rules.RuleFor(o => o.Height).NotNull().GreaterThan(100).WithRowColor();
                     rules.RuleFor(o => o.Age).NotNull().GreaterThan(0);
