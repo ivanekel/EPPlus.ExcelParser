@@ -1,15 +1,15 @@
 using System;
 using OfficeOpenXml;
 
-namespace EPPlus.ExcelParser
+namespace EPPlus.ExcelParser.Parsing.Mapper
 {
-    public class ExcelRowMapper
+    public class ExcelInlineRowMapper
     {
         private readonly ExcelWorksheet _worksheet;
         private readonly int _row;
 
 
-        public ExcelRowMapper(ExcelWorksheet worksheet, int row)
+        internal ExcelInlineRowMapper(ExcelWorksheet worksheet, int row)
         {
             _worksheet = worksheet;
             _row = row;
