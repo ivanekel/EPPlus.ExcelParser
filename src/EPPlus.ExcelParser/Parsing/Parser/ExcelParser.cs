@@ -9,8 +9,9 @@ namespace EPPlus.ExcelParser.Parsing.Parser
 {
     public partial class ExcelParser<TObject>
     {
+        public bool IsValid { get => !_hasErrors; }
+
         private readonly ExcelPackage _excelPackage;
-        private readonly List<TObject> _mappedObjectList = new List<TObject>();
         private readonly Marking _marking = new Marking();
         private readonly int _firstRowNumber;
 
@@ -24,15 +25,16 @@ namespace EPPlus.ExcelParser.Parsing.Parser
             _firstRowNumber = hasHeaders ? 2 : 1;
         }
 
-        public ExcelParserResult<TObject> GetResult(bool raiseCastExceptions = false)
+        public IEnumerable<TObject> GetRows(bool raiseCastExceptions = false)
         {
+            if (_rowMapper == null)
+                throw new Exception("Mapper is not set");
+
             var worksheet = _excelPackage.Workbook.Worksheets.First();
 
             for (var row = _firstRowNumber; row <= worksheet.Dimension.Rows; row++)
             {
                 TObject mappedObject;
-                if (_rowMapper == null)
-                    throw new Exception("Mapper is not set");
 
                 try
                 {
@@ -56,10 +58,16 @@ namespace EPPlus.ExcelParser.Parsing.Parser
                 }
 
                 _marking.MarkRowAsValid(worksheet, row);
-                _mappedObjectList.Add(mappedObject);
+                yield return mappedObject;
             }
+        }
 
-            return ExcelParserResult<TObject>.CreateNew(_mappedObjectList, _excelPackage, !_hasErrors);
+        public ExcelParserResult<TObject> GetResult(bool raiseCastExceptions = false)
+        {          
+            return ExcelParserResult<TObject>.CreateNew(
+                new List<TObject>(GetRows(raiseCastExceptions)),
+                _excelPackage,
+                !_hasErrors);
         }
     }
 }

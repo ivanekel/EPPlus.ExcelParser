@@ -4,11 +4,11 @@ using System;
 
 namespace EPPlus.ExcelParser.Parsing.Mapper
 {
-    internal class DefaultMappingProvider<TObject> : IRowMapper<TObject> where TObject : class
+    internal class DefaultRowMappingProvider<TObject> : IRowMapper<TObject> where TObject : class
     {
         private ExcelMapper<TObject> _mapper;
 
-        public DefaultMappingProvider(ExcelMapper<TObject> mapper)
+        public DefaultRowMappingProvider(ExcelMapper<TObject> mapper)
         {
             _mapper = mapper;
         }

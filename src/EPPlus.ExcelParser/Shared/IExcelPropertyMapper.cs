@@ -6,6 +6,6 @@ namespace EPPlus.ExcelParser.Shared
     {
         int ColumnNumber { get; }
         void MapFromExcel(TObject target, ExcelRange cell);
-        void MapToExcel(TObject target, ExcelWorksheet worksheet, int rowNumber);
+        void MapToExcel(TObject target, ExcelRange cell);
     }
 }

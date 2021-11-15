@@ -17,6 +17,30 @@ namespace EPPlus.ExcelParser.Shared
             return this;
         }
 
+        public void SetHeaders(ExcelWorksheet worksheet)
+        {
+            foreach (var header in _headers)
+            {
+                worksheet.Cells[1, header.Key].Value = header.Value;
+            }
+        }
+
+        public void AutoFit(ExcelWorksheet worksheet)
+        {
+            foreach (var map in _mappings)
+            {
+                worksheet.Column(map.Key).AutoFit();
+            }
+        }
+
+        public void MapToExcel(TObject target, ExcelWorksheet worksheet, int rowNumber)
+        {
+            foreach (var map in _mappings)
+            {
+                map.Value.MapToExcel(target, worksheet.Cells[rowNumber, map.Value.ColumnNumber]);
+            }
+        }
+
         public TObject MapFromExcel(ExcelWorksheet worksheet, int rowNumber)
         {
             var target = Activator.CreateInstance<TObject>();

@@ -32,10 +32,10 @@ namespace EPPlus.ExcelParser.Shared
             }
         }
 
-        public void MapToExcel(TObject target, ExcelWorksheet worksheet, int rowNumber)
+        public void MapToExcel(TObject target, ExcelRange cell)
         {
             if (_value == null) _value = _expression.Compile();
-            worksheet.Cells[rowNumber, ColumnNumber].Value = _value(target);
+            cell.Value = _value(target);
         }
 
 

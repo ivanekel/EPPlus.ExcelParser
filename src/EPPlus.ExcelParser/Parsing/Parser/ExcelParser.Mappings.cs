@@ -14,7 +14,7 @@ namespace EPPlus.ExcelParser.Parsing.Parser
 
         public ExcelParser<TObject> SetMapping(ExcelMapper<TObject> mapper)
         {
-            _rowMapper = new DefaultMappingProvider<TObject>(mapper);
+            _rowMapper = new DefaultRowMappingProvider<TObject>(mapper);
             return this;
         }
 

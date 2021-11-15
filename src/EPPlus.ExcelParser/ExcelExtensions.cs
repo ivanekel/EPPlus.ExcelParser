@@ -2,7 +2,7 @@
 using System.IO;
 using System.Threading.Tasks;
 
-namespace EPPlus.ExcelParser.Parsing
+namespace EPPlus.ExcelParser
 {
     public static class ExcelExtensions
     {
